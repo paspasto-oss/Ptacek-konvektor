@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ptáček → POHODA | Vydaná objednávka</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Ptáček → POHODA <small style="font-size:13px;color:#bbb">v2.1</small></h1><p>Výdajka XML na vydanú objednávku POHODA, pripravenú na následnú príjemku</p></div></div></header>
+<main>
+<section class="card"><h2>1. Načítanie výdajky Ptáček</h2><div class="content">
+<div class="drop" id="drop"><strong>Presuňte sem XML výdajku od Ptáčka</strong><span>Súbor sa spracuje iba vo vašom prehliadači a nikam sa neposiela.</span><br><input id="file" type="file" accept=".xml,text/xml,application/xml"></div>
+<div class="meta" id="meta"></div><div id="loadStatus" class="warning">Nahrajte XML výdajku od Ptáčka. Súbor sa spracuje iba lokálne vo vašom prehliadači.</div>
+</div></section>
+
+<section class="card"><h2>2. Nastavenie objednávky POHODA</h2><div class="content">
+<div class="grid">
+<div class="field"><label>IČO účtovnej jednotky POHODA</label><input id="accountIco" inputmode="numeric"><div class="hint">Musí byť IČO firmy otvorenej v POHODE.</div></div>
+<div class="field"><label>Dátum objednávky</label><input id="docDate" type="date"></div>
+<div class="field"><label>Dátum dodania</label><input id="deliveryDate" type="date"></div>
+<div class="field"><label>Kód skladu v POHODE (nepovinné)</label><input id="storeId" placeholder="napr. HLAVNY"><div class="hint">Vyplňte len pri rovnakých kódoch vo viacerých skladoch.</div></div>
+<div class="field"><label>Východiskový kód položky</label><select id="codeSource"><option value="vendor">Dodávateľský kód – VendorItemNo</option><option value="ptacek">Dlhý interný kód Ptáčka – No</option><option value="saved">Zapamätané párovanie, inak dodávateľský kód</option></select></div>
+<div class="field"><label>Cena pre POHODU</label><select id="priceSource"><option value="net">Skutočná nákupná cena: základ DPH ÷ množstvo</option><option value="list">Cenníková cena UnitPrice – nepoužívať bežne</option></select></div>
+<div class="field"><label>Forma úhrady v POHODE (nepovinné)</label><input id="paymentType" placeholder="napr. Príkazom"><div class="hint">Musí presne existovať v zozname foriem úhrad.</div></div>
+<div class="check"><input id="linkAddress" type="checkbox"><label for="linkAddress"><b>Skúsiť prepojiť Ptáčka s Adresárom</b><br><span class="hint">Použije IČO a údaje adresy; pri viacerých pobočkách môže POHODA vrátiť upozornenie.</span></label></div>
+<div class="check"><input id="ignoreStoreFilter" type="checkbox"><label for="ignoreStoreFilter"><b>Ignorovať používateľský filter skladu</b><br><span class="hint">Pomôže dohľadať kód aj mimo aktuálne filtrovaného skladu.</span></label></div>
+<div class="field span2"><label>Text na objednávke</label><textarea id="headerText"></textarea></div>
+</div>
+<div id="priceWarning" class="warning" style="display:none"></div>
+</div></section>
+
+<section class="card"><h2>3. Kontrola položiek a kódov</h2>
+<div class="table-wrap"><table><thead><tr><th>Import</th><th>Riadok</th><th>Dlhý kód Ptáčka</th><th>VendorItemNo</th><th>Kód POHODA</th><th>Stav</th><th>Popis Ptáček (iba kontrolný)</th><th>Množstvo</th><th>MJ</th><th>Cenníková J.cena</th><th>Nákupná J.cena</th><th>Základ riadku</th><th>DPH</th></tr></thead><tbody id="items"></tbody></table></div>
+<div class="content"><div class="warning success" style="margin-top:0;margin-bottom:14px"><b>Skladové položky:</b> názov položky z Ptáčka sa do XML neposiela; POHODA ho doplní zo skladovej karty podľa poľa Kód POHODA. Kód preto musí v POHODE existovať. Ak karta ešte neexistuje, položku odškrtnite alebo kartu najprv založte.</div><div class="actions"><button class="btn outline" id="rememberCodes">Zapamätať upravené kódy</button><button class="btn outline" id="exportMap">Exportovať mapovanie</button><label class="btn outline" style="cursor:pointer">Importovať mapovanie<input id="importMap" type="file" accept=".json,application/json" hidden></label><button class="btn outline" id="clearMap">Vymazať mapovanie</button></div>
+<div class="totals"><div class="total"><small>Základ bez DPH</small><b id="sumBase">0,00 €</b></div><div class="total"><small>DPH</small><b id="sumVat">0,00 €</b></div><div class="total"><small>Celkom s DPH</small><b id="sumGross">0,00 €</b></div></div>
+<div id="validation" class="warning"></div></div>
+</section>
+
+<section class="card"><h2>4. Vytvorenie XML pre POHODU</h2><div class="content">
+<div class="actions"><button class="btn primary" id="download">Stiahnuť XML pre POHODU</button><button class="btn dark" id="copy">Kopírovať XML</button><button class="btn" id="toggleXml">Zobraziť XML</button></div>
+<div class="xmlbox" id="xmlbox"><textarea id="xmlPreview" readonly spellcheck="false"></textarea></div>
+</div></section>
+
+<section class="card"><h2>Postup v POHODE</h2><div class="content"><div class="steps">
+<div class="step"><b>1. Import</b>Súbor → Dátová komunikácia → XML import/export a vyberte vytvorený XML.</div>
+<div class="step"><b>2. Kontrola</b>V agende Vydané objednávky otvorte nový doklad a overte dodávateľa, skladové kódy, množstvá a nákupné ceny.</div>
+<div class="step"><b>3. Príjemka</b>V agende Príjemky použite Záznam/Prenos → Vydané objednávky a prevezmite objednávku alebo jej položky.</div>
+<div class="step"><b>4. Výsledok importu</b>Ak POHODA v odpovedi uvedie warning/error, rozhodujúci je text a XPath chyby. Najčastejší problém je neexistujúci alebo nesprávne filtrovaný skladový kód.</div>
+</div><p class="footer-note"><b>Dôležité:</b> na vytvorenie naviazanej príjemky musia byť položky objednávky skladové. Preto konvertor vyžaduje vyplnený kód, ktorý sa zhoduje s poľom Kód na skladovej karte POHODA. Pole Dodané zostáva 0; vyplní sa až prenosom do príjemky.</p></div></section>
+</main>
+<script src="01-core.js"></script>
+<script src="02-render.js"></script>
+<script src="03-events.js"></script>
+</body></html>
