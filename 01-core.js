@@ -11,7 +11,7 @@ const num = n => { let s=(Number(n)||0).toFixed(6).replace(/0+$/,'').replace(/\.
 const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 const safeId = s => String(s||'DOKLAD').replace(/[^A-Za-z0-9_.-]/g,'').slice(0,35) || 'DOKLAD';
 const getText = (node,name) => { const e=node.getElementsByTagName(name)[0]; return e ? (e.textContent||'').trim() : ''; };
-const parseN = s => Number(String(s??'').replace(/\s/g,'').replace(',','.')) || 0;
+const parseN = s => Number(String(s??'').replace(/\s/g,'').replace('%','').replace(',','.')) || 0;
 function today(){ return new Date().toISOString().slice(0,10); }
 function parseDate(s){ const m=String(s||'').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/); if(!m) return today(); let y=+m[3]; if(y<100)y+=y<70?2000:1900; return `${y.toString().padStart(4,'0')}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
 function vatKey(rate){ rate=Math.round(Number(rate)||0); return rate===23?'high':rate===19?'low':rate===5?'third':rate===0?'none':'high'; }
@@ -35,20 +35,67 @@ function parsePtacek(xmlText,fileName='výdajka.xml'){
 
 function parseExcel(buffer,fileName='priloha.xlsx'){
  if(typeof XLSX==='undefined') throw new Error('Knižnica na čítanie XLSX sa nenačítala. Skontrolujte internetové pripojenie a obnovte stránku.');
- const wb=XLSX.read(buffer,{type:'array',cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; if(!ws)throw new Error('Excel neobsahuje pracovný hárok.');
- const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});
- let title=''; for(const row of rows.slice(0,10)){ for(const v of row){ const s=String(v??'').trim(); if(/PRÍLOHA K PONUKE/i.test(s)){title=s;break;} } if(title)break; }
- const numMatch=title.match(/č\.\s*([^\s]+)/i) || fileName.match(/č\._([^\.]+)/i); const docNo=numMatch?numMatch[1].replace(/_/g,' '):fileName.replace(/\.xlsx$/i,'');
+ const book=XLSX.read(buffer,{type:'array',cellDates:true});
+ const ws=book.Sheets[book.SheetNames[0]];
+ if(!ws) throw new Error('Excel neobsahuje pracovný hárok.');
+ const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1');
+ const value=(r,c)=>{ const cell=ws[XLSX.utils.encode_cell({r,c})]; return cell ? (cell.v ?? cell.w ?? '') : ''; };
+ let title='';
+ for(let r=range.s.r;r<=Math.min(range.e.r,12);r++){
+   for(let c=range.s.c;c<=range.e.c;c++){
+     const s=String(value(r,c)??'').trim();
+     if(/PRÍLOHA\s+K\s+PONUKE/i.test(s)){ title=s; break; }
+   }
+   if(title) break;
+ }
+ const numMatch=title.match(/č\.\s*([^\s]+)/i) || fileName.match(/č\._([^\.]+)/i);
+ const docNo=numMatch ? numMatch[1].replace(/_/g,' ') : fileName.replace(/\.xlsx$/i,'');
  const data={sourceType:'xlsx',sourceFile:fileName,supplier:{...PTACEK},customerIco:'53690036',dispatchNo:docNo,supplierOrderNo:'',externalNo:'',contractCode:'',contractName:'',date:today(),deliveryDate:today(),items:[]};
- rows.forEach((row,idx)=>{
-   const raw=String(row[2]??'').trim(); const qty=parseN(row[7]); const unit=String(row[9]??'').trim(); const unitPrice=parseN(row[10]); const base=parseN(row[16]);
-   if(!raw || !(qty>0) || !(unitPrice>=0)) return;
-   const m=raw.match(/^\s*([^:]+)\s*:\s*(.+)$/); if(!m)return;
-   const code=m[1].trim(), description=m[2].trim();
-   let rate=parseN(row[17]); if(rate>0 && rate<1)rate*=100; if(!rate && base)rate=Math.round(parseN(row[19])/base*100);
-   const it={lineNo:String(idx+1),ptacekNo:'',vendorCode:code,description,unit,quantity:qty,listUnitPrice:unitPrice,netUnitPrice:unitPrice,baseTotal:base||qty*unitPrice,vatRate:rate||23,vatKey:vatKey(rate||23),include:true};
-   it.pohodaCode=mappedCode(it)||chooseCode(it,$('codeSource').value); data.items.push(it);
- });
- if(!data.items.length)throw new Error('V Exceli sa nenašli položky vo formáte KÓD:NÁZOV s množstvom a jednotkovou cenou.');
- data.headerText=title||defaultHeader(data); return data;
+
+ for(let r=range.s.r;r<=range.e.r;r++){
+   let raw=''; let rawCol=-1;
+   for(let c=range.s.c;c<=Math.min(range.e.c,12);c++){
+     const s=String(value(r,c)??'').trim();
+     if(/^\s*[^:]+\s*:\s*.+/.test(s) && !/Označenie\s+dodávky/i.test(s)){ raw=s; rawCol=c; break; }
+   }
+   if(!raw) continue;
+   const m=raw.match(/^\s*([^:]+?)\s*:\s*(.+)$/);
+   if(!m) continue;
+   const code=m[1].trim();
+   const description=m[2].replace(/\s+/g,' ').trim();
+   if(!code || !description) continue;
+
+   let qty=parseN(value(r,7));       // H – množstvo v tlačovej zostave POHODA
+   let unit=String(value(r,9)??'').trim(); // J – MJ
+   let unitPrice=parseN(value(r,10));     // K – jednotková cena
+   let base=parseN(value(r,16));          // Q – základ riadku
+   let rateRaw=value(r,17);               // R – sadzba DPH
+   let vatAmount=parseN(value(r,19));     // T – DPH riadku
+
+   // Záloha pre varianty tlačovej zostavy: nájdi prvé rozumné hodnoty napravo od názvu.
+   if(!(qty>0)){
+     for(let c=rawCol+1;c<=Math.min(range.e.c,12);c++){ const n=parseN(value(r,c)); if(n>0){ qty=n; break; } }
+   }
+   if(!unit){
+     for(let c=rawCol+1;c<=Math.min(range.e.c,12);c++){ const s=String(value(r,c)??'').trim(); if(/^(ks|m|bm|bal|sada|hod|kpl)$/i.test(s)){ unit=s; break; } }
+   }
+   if(!(unitPrice>0)){
+     const candidates=[];
+     for(let c=rawCol+1;c<=Math.min(range.e.c,15);c++){ const n=parseN(value(r,c)); if(n>0)candidates.push(n); }
+     if(candidates.length>1) unitPrice=candidates[1];
+   }
+   if(!(qty>0) || !(unitPrice>0)) continue;
+   if(!(base>0)) base=qty*unitPrice;
+   let rate=parseN(rateRaw);
+   if(rate>0 && rate<1) rate*=100;
+   if(!rate && base>0 && vatAmount>=0) rate=Math.round(vatAmount/base*100);
+   if(![0,5,19,23].includes(Math.round(rate))) rate=23;
+
+   const it={lineNo:String(r+1),ptacekNo:'',vendorCode:code,description,unit:unit||'ks',quantity:qty,listUnitPrice:unitPrice,netUnitPrice:unitPrice,baseTotal:base,vatRate:rate,vatKey:vatKey(rate),include:true};
+   it.pohodaCode=mappedCode(it)||chooseCode(it,$('codeSource').value);
+   data.items.push(it);
+ }
+ if(!data.items.length) throw new Error('V Exceli sa nenašli položky. Očakávaný formát je kód a názov v jednom riadku, množstvo v stĺpci H a jednotková cena v stĺpci K.');
+ data.headerText=title||defaultHeader(data);
+ return data;
 }
