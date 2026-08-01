@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ptáček → POHODA | Vydaná objednávka</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2.3">
 </head>
 <body>
-<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Ptáček → POHODA <small style="font-size:13px;color:#bbb">v2.2</small></h1><p>Výdajka XML alebo príloha ponuky XLSX na vydanú objednávku POHODA</p></div></div></header>
+<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Ptáček → POHODA <small style="font-size:13px;color:#bbb">v2.3</small></h1><p>Výdajka XML alebo príloha ponuky XLSX na vydanú objednávku POHODA</p></div></div></header>
 <main>
 <section class="card"><h2>1. Načítanie zdrojového dokladu</h2><div class="content">
 <div class="drop" id="drop"><strong>Presuňte sem XML výdajku od Ptáčka alebo Excel prílohu ponuky</strong><span>Podporované súbory: XML, XLSX. Súbor sa spracuje iba vo vašom prehliadači.</span><br><input id="file" type="file" accept=".xml,.xlsx,text/xml,application/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
@@ -47,10 +47,10 @@
 <div class="step"><b>2. Kontrola</b>V agende Vydané objednávky overte dodávateľa, skladové kódy, množstvá a ceny.</div>
 <div class="step"><b>3. Príjemka</b>V agende Príjemky použite Záznam/Prenos → Vydané objednávky.</div>
 <div class="step"><b>4. Výsledok importu</b>Najčastejší problém je neexistujúci skladový kód.</div>
-</div><p class="footer-note"><b>Excel príloha:</b> aplikácia číta kód a názov zo stĺpca „Označenie dodávky“, množstvo, MJ, jednotkovú cenu a DPH. Riadky bez kódu a množstva preskočí.</p></div></section>
+</div><p class="footer-note"><b>Excel príloha:</b> aplikácia číta označenie dodávky z riadku, množstvo zo stĺpca H, MJ zo stĺpca J, jednotkovú cenu zo stĺpca K a DPH zo stĺpca R. Riadky bez skladového kódu sa neimportujú.</p></div></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="01-core.js"></script>
-<script src="02-render.js"></script>
-<script src="03-events.js"></script>
+<script src="01-core.js?v=2.3"></script>
+<script src="02-render.js?v=2.3"></script>
+<script src="03-events.js?v=2.3"></script>
 </body></html>
