@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ptáček → POHODA | Vydaná objednávka</title>
-<link rel="stylesheet" href="style.css?v=2.3">
+<link rel="stylesheet" href="style.css?v=2.4">
 </head>
 <body>
-<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Ptáček → POHODA <small style="font-size:13px;color:#bbb">v2.3</small></h1><p>Výdajka XML alebo príloha ponuky XLSX na vydanú objednávku POHODA</p></div></div></header>
+<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Ptáček → POHODA <small style="font-size:13px;color:#bbb">v2.4</small></h1><p>XML výdajka, XLSX príloha alebo PDF ponuka na vydanú objednávku POHODA</p></div></div></header>
 <main>
 <section class="card"><h2>1. Načítanie zdrojového dokladu</h2><div class="content">
-<div class="drop" id="drop"><strong>Presuňte sem XML výdajku od Ptáčka alebo Excel prílohu ponuky</strong><span>Podporované súbory: XML, XLSX. Súbor sa spracuje iba vo vašom prehliadači.</span><br><input id="file" type="file" accept=".xml,.xlsx,text/xml,application/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
-<div class="meta" id="meta"></div><div id="loadStatus" class="warning">Nahrajte XML výdajku od Ptáčka alebo Excel prílohu ponuky z POHODY.</div>
+<div class="drop" id="drop"><strong>Presuňte sem XML, XLSX alebo PDF</strong><span>Podporované súbory: XML výdajka Ptáček, Excel príloha ponuky a textová PDF ponuka z POHODY. Súbor sa spracuje iba vo vašom prehliadači.</span><br><input id="file" type="file" accept=".xml,.xlsx,.pdf,text/xml,application/xml,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+<div class="meta" id="meta"></div><div id="loadStatus" class="warning">Nahrajte XML výdajku, Excel prílohu alebo PDF ponuku.</div>
 </div></section>
 
 <section class="card"><h2>2. Nastavenie objednávky POHODA</h2><div class="content">
@@ -23,7 +23,7 @@
 <div class="field"><label>Východiskový kód položky</label><select id="codeSource"><option value="vendor">Kód položky zo zdroja</option><option value="ptacek">Dlhý interný kód Ptáčka – No</option><option value="saved">Zapamätané párovanie, inak zdrojový kód</option></select></div>
 <div class="field"><label>Cena pre POHODU</label><select id="priceSource"><option value="net">Cena zo zdrojového dokladu</option><option value="list">Cenníková cena UnitPrice – iba XML Ptáček</option></select></div>
 <div class="field"><label>Forma úhrady v POHODE (nepovinné)</label><input id="paymentType" placeholder="napr. Príkazom"><div class="hint">Musí presne existovať v zozname foriem úhrad.</div></div>
-<div class="check"><input id="linkAddress" type="checkbox"><label for="linkAddress"><b>Skúsiť prepojiť Ptáčka s Adresárom</b><br><span class="hint">Použije IČO a údaje adresy.</span></label></div>
+<div class="check"><input id="linkAddress" type="checkbox"><label for="linkAddress"><b>Skúsiť prepojiť Ptáčka s Adresárom</b><br><span class="hint">Použite najmä pri XML výdajke Ptáček.</span></label></div>
 <div class="check"><input id="ignoreStoreFilter" type="checkbox"><label for="ignoreStoreFilter"><b>Ignorovať používateľský filter skladu</b><br><span class="hint">Pomôže dohľadať kód aj mimo aktuálne filtrovaného skladu.</span></label></div>
 <div class="field span2"><label>Text na objednávke</label><textarea id="headerText"></textarea></div>
 </div>
@@ -32,7 +32,7 @@
 
 <section class="card"><h2>3. Kontrola položiek a kódov</h2>
 <div class="table-wrap"><table><thead><tr><th>Import</th><th>Riadok</th><th>Dlhý kód Ptáčka</th><th>Kód zo zdroja</th><th>Kód POHODA</th><th>Stav</th><th>Popis (iba kontrolný)</th><th>Množstvo</th><th>MJ</th><th>Cenníková J.cena</th><th>J.cena pre objednávku</th><th>Základ riadku</th><th>DPH</th></tr></thead><tbody id="items"></tbody></table></div>
-<div class="content"><div class="warning success" style="margin-top:0;margin-bottom:14px"><b>Skladové položky:</b> názov sa do XML neposiela; POHODA ho doplní zo skladovej karty podľa poľa Kód POHODA. Ak karta neexistuje, položku odškrtnite alebo kartu najprv založte.</div><div class="actions"><button class="btn outline" id="rememberCodes">Zapamätať upravené kódy</button><button class="btn outline" id="exportMap">Exportovať mapovanie</button><label class="btn outline" style="cursor:pointer">Importovať mapovanie<input id="importMap" type="file" accept=".json,application/json" hidden></label><button class="btn outline" id="clearMap">Vymazať mapovanie</button></div>
+<div class="content"><div class="warning success" style="margin-top:0;margin-bottom:14px"><b>PDF ponuka:</b> PDF zvyčajne neobsahuje skladové kódy. Doplňte presný Kód POHODA ručne a kliknite na „Zapamätať upravené kódy“. Pri ďalšom rovnakom názve sa kód doplní automaticky. Položky bez karty odškrtnite.</div><div class="actions"><button class="btn outline" id="rememberCodes">Zapamätať upravené kódy</button><button class="btn outline" id="exportMap">Exportovať mapovanie</button><label class="btn outline" style="cursor:pointer">Importovať mapovanie<input id="importMap" type="file" accept=".json,application/json" hidden></label><button class="btn outline" id="clearMap">Vymazať mapovanie</button></div>
 <div class="totals"><div class="total"><small>Základ bez DPH</small><b id="sumBase">0,00 €</b></div><div class="total"><small>DPH</small><b id="sumVat">0,00 €</b></div><div class="total"><small>Celkom s DPH</small><b id="sumGross">0,00 €</b></div></div>
 <div id="validation" class="warning"></div></div>
 </section>
@@ -43,14 +43,15 @@
 </div></section>
 
 <section class="card"><h2>Postup v POHODE</h2><div class="content"><div class="steps">
-<div class="step"><b>1. Import</b>Súbor → Dátová komunikácia → XML import/export a vyberte vytvorený XML.</div>
-<div class="step"><b>2. Kontrola</b>V agende Vydané objednávky overte dodávateľa, skladové kódy, množstvá a ceny.</div>
-<div class="step"><b>3. Príjemka</b>V agende Príjemky použite Záznam/Prenos → Vydané objednávky.</div>
-<div class="step"><b>4. Výsledok importu</b>Najčastejší problém je neexistujúci skladový kód.</div>
-</div><p class="footer-note"><b>Excel príloha:</b> aplikácia číta označenie dodávky z riadku, množstvo zo stĺpca H, MJ zo stĺpca J, jednotkovú cenu zo stĺpca K a DPH zo stĺpca R. Riadky bez skladového kódu sa neimportujú.</p></div></section>
+<div class="step"><b>1. Načítanie</b>Vyberte XML, XLSX alebo textový PDF export z POHODY.</div>
+<div class="step"><b>2. Kódy</b>Pri PDF doplňte skladové kódy podľa kariet POHODA a uložte mapovanie.</div>
+<div class="step"><b>3. Import</b>V POHODE použite Súbor → Dátová komunikácia → XML import/export.</div>
+<div class="step"><b>4. Príjemka</b>V agende Príjemky použite Záznam/Prenos → Vydané objednávky.</div>
+</div><p class="footer-note"><b>Obmedzenie PDF:</b> podporovaný je PDF dokument s textovou vrstvou. Naskenovaný obrázok bez textu sa nečíta. PDF ponuka 26NA00151 obsahuje názvy, množstvá, ceny a DPH, ale neobsahuje skladové kódy, preto ich nemožno spoľahlivo doplniť bez mapovania.</p></div></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="01-core.js?v=2.3"></script>
-<script src="02-render.js?v=2.3"></script>
-<script src="03-events.js?v=2.3"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="01-core.js?v=2.4"></script>
+<script src="02-render.js?v=2.4"></script>
+<script src="03-events.js?v=2.4"></script>
 </body></html>
