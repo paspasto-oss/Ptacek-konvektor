@@ -1,34 +1,31 @@
 'use strict';
 
-// Verzia 2.5: PDF ponuky POHODA môžu obsahovať položky vo formáte KÓD:NÁZOV.
-// Tento parser zachová kód zo začiatku položky a použije ho priamo ako Kód POHODA.
-parsePdf = async function parsePdfWithCodes(buffer,fileName='ponuka.pdf'){
+// Verzia 2.6: PDF parser používa fyzické stĺpce tlačovej zostavy POHODA.
+// Tak sa zalomený názov predchádzajúcej položky nepripojí ku kódu nasledujúcej položky.
+parsePdf = async function parsePdfByColumns(buffer,fileName='ponuka.pdf'){
   if(typeof pdfjsLib==='undefined') throw new Error('Knižnica na čítanie PDF sa nenačítala. Skontrolujte internetové pripojenie a obnovte stránku.');
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
   const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer)}).promise;
-  const allLines=[];
+  const pages=[];
   let wholeText='';
 
   for(let p=1;p<=pdf.numPages;p++){
     const page=await pdf.getPage(p);
     const tc=await page.getTextContent();
-    const textItems=tc.items
+    const words=tc.items
       .filter(x=>String(x.str||'').trim())
-      .map(x=>({text:String(x.str).trim(),x:x.transform[4],y:x.transform[5]}));
+      .map(x=>({text:String(x.str).trim(),x:Number(x.transform[4]),y:Number(x.transform[5])}));
 
-    const groups=[];
-    textItems.sort((a,b)=>b.y-a.y||a.x-b.x).forEach(it=>{
-      let g=groups.find(r=>Math.abs(r.y-it.y)<2.5);
-      if(!g){ g={y:it.y,items:[]}; groups.push(g); }
-      g.items.push(it);
+    const rows=[];
+    words.sort((a,b)=>b.y-a.y||a.x-b.x).forEach(word=>{
+      let row=rows.find(r=>Math.abs(r.y-word.y)<2.4);
+      if(!row){ row={y:word.y,items:[]}; rows.push(row); }
+      row.items.push(word);
     });
-
-    groups.sort((a,b)=>b.y-a.y).forEach(g=>{
-      g.items.sort((a,b)=>a.x-b.x);
-      const text=g.items.map(i=>i.text).join(' ').replace(/\s+/g,' ').trim();
-      if(text){ allLines.push({page:p,text}); wholeText+=' '+text; }
-    });
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>r.items.sort((a,b)=>a.x-b.x));
+    pages.push(rows);
+    wholeText+=' '+rows.map(r=>r.items.map(i=>i.text).join(' ')).join(' ');
   }
 
   const titleMatch=wholeText.match(/PONUKA\s*č\.\s*([A-Z0-9]+)/i) || fileName.match(/([0-9]{2}NA[0-9]+)/i);
@@ -40,54 +37,71 @@ parsePdf = async function parsePdfWithCodes(buffer,fileName='ponuka.pdf'){
     date:dateMatch?parseDate(dateMatch[1]):today(),deliveryDate:dateMatch?parseDate(dateMatch[1]):today(),items:[]
   };
 
-  let pending=[];
+  const textIn=(items,min,max)=>items.filter(i=>i.x>=min&&i.x<max).map(i=>i.text).join(' ').replace(/\s+/g,' ').trim();
+  const firstNumber=(items,min,max)=>{
+    const s=textIn(items,min,max).replace(/\s/g,'');
+    const m=s.match(/-?\d+(?:[.,]\d+)?/);
+    return m?parseN(m[0]):0;
+  };
+  const extractCodeAndName=raw=>{
+    raw=String(raw||'').replace(/\s+/g,' ').trim();
+    const colon=raw.indexOf(':');
+    if(colon>0&&colon<=45){
+      const code=raw.slice(0,colon).trim();
+      const name=raw.slice(colon+1).trim();
+      if(code&&name&&/^[A-Z0-9 ._\/-]+$/i.test(code)) return {code,name};
+    }
+    return {code:'',name:raw};
+  };
+
   let lineNo=0;
-  const skip=/^(Označenie dodávky|Ekonomický a informačný systém|Strana \d+|Súčet položiek|SPOLU NA ÚHRADU|Dodávateľ:|Odberateľ:|Ponuka č\.|Forma úhrady:|Dátum zápisu:|Platné do:|Konečný príjemca:|Vystavil:|Spektra install|TCH SPACE|IČO:|DIČ:|IČ DPH:|Telefón:|E-mail:|www\.|Realne použité)/i;
-  const numericRow=/^(.*?)\s+(\d+(?:[.,]\d+)?)\s*(ks|m|bm|bal|sada|hod|kpl)?\s+(\d+[.,]\d{2})\s+(?:(\d+[.,]\d{2})\s+)?(\d+[.,]\d{2})\s+(0|5|19|23)%\s+(\d+[.,]\d{2})\s+(\d+[.,]\d{2})$/i;
+  let current=null;
+  let inTable=false;
 
-  for(const row of allLines){
-    const t=row.text.trim();
-    if(!t || skip.test(t)) continue;
+  for(const rows of pages){
+    inTable=false;
+    current=null;
+    for(const row of rows){
+      const full=row.items.map(i=>i.text).join(' ').replace(/\s+/g,' ').trim();
+      const left=textIn(row.items,0,190);
 
-    const m=t.match(numericRow);
-    if(m){
-      const prefix=m[1].trim();
-      let raw=[...pending,prefix].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
-      pending=[];
-      if(!raw || /^(Cena|Zľava|DPH|EUR Celkom)$/i.test(raw)) continue;
+      if(/Označenie\s+dodávky/i.test(full)){ inTable=true; current=null; continue; }
+      if(!inTable) continue;
+      if(/^(Ekonomický a informačný systém|Súčet položiek|SPOLU NA ÚHRADU|Vystavil:|Strana \d+)/i.test(full)){ current=null; continue; }
 
-      let code='';
-      let description=raw;
-      const colon=raw.indexOf(':');
-      if(colon>0 && colon<=45){
-        const candidate=raw.slice(0,colon).trim();
-        const rest=raw.slice(colon+1).trim();
-        // Kódy môžu byť číselné, alfanumerické, obsahovať medzeru, lomku alebo pomlčku.
-        if(candidate && rest && /^[A-Z0-9 ._\/-]+$/i.test(candidate)){
-          code=candidate;
-          description=rest;
-        }
+      // Pevné stĺpce tlačovej zostavy POHODA:
+      // názov 42–190, množstvo 205–240, MJ 220–255, J.cena 270–330,
+      // Cena 360–405, %DPH 400–455, DPH 455–505, Celkom 505+.
+      const qty=firstNumber(row.items,205,240);
+      const unit=textIn(row.items,220,260).match(/\b(ks|m|bm|bal|sada|hod|kpl)\b/i)?.[1]||'';
+      const unitPrice=firstNumber(row.items,270,335);
+      const base=firstNumber(row.items,355,405);
+      const vatText=textIn(row.items,400,455);
+      const vatMatch=vatText.match(/(0|5|19|23)\s*%/);
+      const rate=vatMatch?parseN(vatMatch[1]):0;
+      const vatAmount=firstNumber(row.items,455,505);
+      const total=firstNumber(row.items,505,580);
+      const isItemStart=!!left && qty>0 && unitPrice>=0 && !!vatMatch && total>=0;
+
+      if(isItemStart){
+        const parsed=extractCodeAndName(left);
+        const it={
+          lineNo:String(++lineNo),ptacekNo:'',vendorCode:parsed.code,
+          description:parsed.name,unit:unit||'ks',quantity:qty,
+          listUnitPrice:unitPrice,netUnitPrice:unitPrice,
+          baseTotal:base||qty*unitPrice,vatRate:rate,vatKey:vatKey(rate),include:true
+        };
+        it.pohodaCode=parsed.code||mappedCode(it);
+        data.items.push(it);
+        current=it;
+        continue;
       }
 
-      const qty=parseN(m[2]);
-      const unit=m[3]||'ks';
-      const unitPrice=parseN(m[4]);
-      const base=parseN(m[6]);
-      const rate=parseN(m[7]);
-      const it={
-        lineNo:String(++lineNo),ptacekNo:'',vendorCode:code,description,
-        unit,quantity:qty,listUnitPrice:unitPrice,netUnitPrice:unitPrice,
-        baseTotal:base||qty*unitPrice,vatRate:rate,vatKey:vatKey(rate),include:true
-      };
-      it.pohodaCode=code || mappedCode(it);
-      data.items.push(it);
-      continue;
-    }
-
-    // Textový pokračovací riadok názvu položky. Kód:NÁZOV môže byť rozdelený na viac riadkov.
-    if(!/^(Množstvo|J\.cena|Zľava|Cena|%DPH|DPH|EUR Celkom)$/i.test(t)){
-      pending.push(t);
-      if(pending.join(' ').length>700) pending=pending.slice(-8);
+      // Pokračovanie názvu patrí vždy k poslednej rozpoznanej položke na rovnakej strane.
+      // Číta sa iba ľavý stĺpec, takže k názvu sa nepripoja množstvá ani ďalšie ceny.
+      if(current&&left&&!/^(Označenie dodávky|Množstvo|J\.cena|Zľava|Cena|%DPH|DPH|EUR Celkom)$/i.test(left)){
+        current.description=(current.description+' '+left).replace(/\s+/g,' ').trim();
+      }
     }
   }
 
