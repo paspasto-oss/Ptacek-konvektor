@@ -1,5 +1,17 @@
 function downloadText(name,text,type='application/xml;charset=utf-8'){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500); }
-async function loadFile(file){ try{ const xml=decodeXml(await file.arrayBuffer()); state=parsePtacek(xml,file.name); $('loadStatus').className='warning success';$('loadStatus').innerHTML=`Načítaná výdajka <b>${esc(state.dispatchNo)}</b> – ${state.items.length} položky.`;renderAll(); }catch(e){$('loadStatus').className='warning danger';$('loadStatus').textContent=e.message||String(e);} }
+async function loadFile(file){
+ try{
+   const buffer=await file.arrayBuffer();
+   if(/\.xlsx$/i.test(file.name)) state=parseExcel(buffer,file.name);
+   else if(/\.xml$/i.test(file.name)) state=parsePtacek(decodeXml(buffer),file.name);
+   else throw new Error('Podporované sú iba súbory XML a XLSX.');
+   $('loadStatus').className='warning success';
+   $('loadStatus').innerHTML=`Načítaný ${state.sourceType==='xlsx'?'Excel':'XML'} doklad <b>${esc(state.dispatchNo)}</b> – ${state.items.length} položiek.`;
+   $('priceSource').value='net';
+   $('priceSource').querySelector('option[value="list"]').disabled=state.sourceType==='xlsx';
+   renderAll();
+ }catch(e){$('loadStatus').className='warning danger';$('loadStatus').textContent=e.message||String(e);}
+}
 
 $('file').addEventListener('change',e=>e.target.files[0]&&loadFile(e.target.files[0]));
 ['dragenter','dragover'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('drag')})); ['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('drag')})); $('drop').addEventListener('drop',e=>e.dataTransfer.files[0]&&loadFile(e.dataTransfer.files[0]));
@@ -11,7 +23,7 @@ $('rememberCodes').addEventListener('click',()=>{state.items.forEach(it=>{if(it.
 $('exportMap').addEventListener('click',()=>downloadText('Ptacek_POHODA_mapovanie_kodov.json',JSON.stringify(mappings,null,2),'application/json;charset=utf-8'));
 $('importMap').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());if(!obj||typeof obj!=='object'||Array.isArray(obj))throw new Error();mappings={...mappings,...obj};saveMappings();state.items.forEach(it=>{const m=mappedCode(it);if(m)it.pohodaCode=m;});renderRows();refresh();alert('Mapovanie bolo importované.');}catch{alert('Súbor mapovania nie je platný JSON.')}e.target.value='';});
 $('clearMap').addEventListener('click',()=>{if(confirm('Naozaj vymazať všetky zapamätané párovania kódov?')){mappings={};saveMappings();renderRows();refresh();}});
-$('download').addEventListener('click',()=>downloadText(`${state.dispatchNo||'Ptacek'}_POHODA_vydana_objednavka.xml`,buildXml()));
+$('download').addEventListener('click',()=>downloadText(`${state.dispatchNo||'Doklad'}_POHODA_vydana_objednavka.xml`,buildXml()));
 $('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(buildXml());$('copy').textContent='Skopírované';setTimeout(()=>$('copy').textContent='Kopírovať XML',1200)}catch{alert('Prehliadač nepovolil kopírovanie. Zobrazte XML a skopírujte ho ručne.')}});
 $('toggleXml').addEventListener('click',()=>{const open=$('xmlbox').classList.toggle('open');$('toggleXml').textContent=open?'Skryť XML':'Zobraziť XML';});
 state.headerText=defaultHeader(state);renderAll();
