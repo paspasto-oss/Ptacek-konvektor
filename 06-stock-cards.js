@@ -5,7 +5,22 @@ let pohodaStockRows = [];
 let stockListLoaded = false;
 
 function normalizeStockCode(v){ return String(v??'').trim().toUpperCase(); }
-function stockCandidateCode(it){ return String(it.pohodaCode||it.vendorCode||it.ptacekNo||'').trim(); }
+function simpleHash(text){
+  let h=2166136261;
+  for(const ch of String(text||'')){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); }
+  return (h>>>0).toString(36).toUpperCase().padStart(7,'0').slice(0,7);
+}
+function codeFromDescription(description){
+  const s=String(description||'').replace(/\s+/g,' ').trim();
+  // Uprednostni modelové označenie obsahujúce písmeno aj číslicu, napr. RCPE1, DN28, M0113.
+  const tokens=s.match(/[A-Za-z0-9][A-Za-z0-9._\/-]{2,24}/g)||[];
+  const model=tokens.find(t=>/[A-Za-z]/.test(t)&&/\d/.test(t)&&!/^(DN|PN|MM|CM|M2|M3)$/i.test(t));
+  if(model) return model.toUpperCase().replace(/[^A-Z0-9._\/-]/g,'').slice(0,25);
+  return `AUTO-${simpleHash(s)}`;
+}
+function stockCandidateCode(it){
+  return String(it.pohodaCode||it.vendorCode||it.ptacekNo||codeFromDescription(it.description)).trim();
+}
 function stockExists(it){
   const candidates=[it.pohodaCode,it.vendorCode,it.ptacekNo].map(normalizeStockCode).filter(Boolean);
   return candidates.some(c=>pohodaStockCodes.has(c));
@@ -53,15 +68,28 @@ function renderMissingStockCards(){
   box.innerHTML=`<div class="warning" style="margin-top:0"><b>${missing.length} chýbajúcich kariet</b> z ${source.length} položiek; ${existing} už existuje.</div>
   <div class="table-wrap" style="max-height:430px;margin-top:12px"><table style="min-width:1100px"><thead><tr><th>Vytvoriť</th><th>Kód novej karty</th><th>Názov</th><th>MJ</th><th>Nákup bez DPH</th><th>Predaj bez DPH</th><th>DPH</th></tr></thead><tbody>${missing.map((it,idx)=>{
     const code=stockCandidateCode(it); const sell=stockSellingPrice(it);
+    // Kód novej karty použijeme aj na následnom XML prijatej faktúry.
+    if(!it.pohodaCode) it.pohodaCode=code;
     return `<tr class="new-stock-row" data-source-line="${esc(it.lineNo)}"><td><input class="newStockInclude" type="checkbox" checked></td><td><input class="newStockCode code" value="${esc(code)}"></td><td><input class="newStockName" value="${esc(it.description||'')}"></td><td><input class="newStockUnit" value="${esc(it.unit||'ks')}" style="width:70px"></td><td><input class="newStockPurchase num" type="number" step="any" value="${num(it.netUnitPrice)}"></td><td><input class="newStockSelling num" type="number" step="any" value="${num(sell)}"></td><td>${vatRate(stockVatKey(it))} %</td></tr>`;
   }).join('')}</tbody></table></div>`;
   btn.disabled=false;
+  // Aktualizuj aj hlavnú tabuľku položiek, aby bolo vidieť nový Kód POHODA.
+  renderRows(); refresh();
+}
+
+function syncGeneratedStockCodes(){
+  [...document.querySelectorAll('.new-stock-row')].forEach(r=>{
+    const src=(state.items||[]).find(x=>String(x.lineNo)===String(r.dataset.sourceLine));
+    const code=r.querySelector('.newStockCode')?.value.trim();
+    if(src&&code) src.pohodaCode=code;
+  });
 }
 
 function buildMissingStockXml(){
   if(!stockListLoaded) throw new Error('Najprv nahrajte export zásob z POHODY.');
   const storage=String($('newStockStorage')?.value||'').trim();
   if(!storage) throw new Error('Vyplňte cieľový sklad pre nové karty.');
+  syncGeneratedStockCodes();
   const rows=[...document.querySelectorAll('.new-stock-row')].filter(r=>r.querySelector('.newStockInclude')?.checked);
   if(!rows.length) throw new Error('Nie je označená žiadna nová skladová karta.');
   const items=rows.map((r,i)=>{
@@ -73,16 +101,18 @@ function buildMissingStockXml(){
     if(!code) throw new Error(`Nová karta ${i+1}: chýba kód.`);
     if(!name) throw new Error(`Nová karta ${i+1}: chýba názov.`);
     const src=(state.items||[]).find(x=>String(x.lineNo)===String(r.dataset.sourceLine));
+    if(src) src.pohodaCode=code;
     const rate=stockVatKey(src||{});
     return `\t<dat:dataPackItem id="ZAS-${esc(safeId(code))}" version="2.0">\n\t\t<stk:stock version="2.0">\n\t\t\t<stk:stockHeader>\n\t\t\t\t<stk:stockType>card</stk:stockType>\n\t\t\t\t<stk:code>${esc(code)}</stk:code>\n\t\t\t\t<stk:isSales>true</stk:isSales>\n\t\t\t\t<stk:purchasingRateVAT>${rate}</stk:purchasingRateVAT>\n\t\t\t\t<stk:sellingRateVAT>${rate}</stk:sellingRateVAT>\n\t\t\t\t<stk:name>${esc(name)}</stk:name>\n\t\t\t\t<stk:unit>${esc(unit)}</stk:unit>\n\t\t\t\t<stk:storage><typ:ids>${esc(storage)}</typ:ids></stk:storage>\n\t\t\t\t<stk:purchasingPrice>${num(purchase)}</stk:purchasingPrice>\n\t\t\t\t<stk:sellingPrice>${num(selling)}</stk:sellingPrice>\n\t\t\t</stk:stockHeader>\n\t\t</stk:stock>\n\t</dat:dataPackItem>`;
   }).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<dat:dataPack id="NEW-STOCK-${Date.now()}" ico="${esc(state.customerIco||'53690036')}" application="Spektra-Doklady-v3.2" version="2.0" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:stk="http://www.stormware.cz/schema/version_2/stock.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">\n${items}\n</dat:dataPack>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<dat:dataPack id="NEW-STOCK-${Date.now()}" ico="${esc(state.customerIco||'53690036')}" application="Spektra-Doklady-v3.3" version="2.0" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:stk="http://www.stormware.cz/schema/version_2/stock.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">\n${items}\n</dat:dataPack>\n`;
 }
 
 function downloadMissingStockXml(){
   try{
     const xml=buildMissingStockXml();
     downloadText(`${state.invoiceNumber||state.dispatchNo||'doklad'}_NOVE_SKLADOVE_KARTY.xml`,xml);
+    renderRows(); refresh();
   }catch(e){ alert(e.message||String(e)); }
 }
 
@@ -91,6 +121,9 @@ function initStockCardsUi(){
   $('downloadStockXml')?.addEventListener('click',downloadMissingStockXml);
   $('stockMarkup')?.addEventListener('input',renderMissingStockCards);
   $('refreshStockCheck')?.addEventListener('click',renderMissingStockCards);
+  $('missingStockCards')?.addEventListener('input',e=>{
+    if(e.target.classList.contains('newStockCode')) syncGeneratedStockCodes();
+  });
   const tbody=$('items');
   if(tbody){ new MutationObserver(()=>{ if(stockListLoaded) renderMissingStockCards(); }).observe(tbody,{childList:true,subtree:false}); }
   renderMissingStockCards();
