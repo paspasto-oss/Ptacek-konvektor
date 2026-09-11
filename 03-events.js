@@ -1,8 +1,54 @@
-function downloadText(name,text,type='application/xml;charset=utf-8'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
-async function loadFile(file){try{const buffer=await file.arrayBuffer();if(/\.xlsx$/i.test(file.name))state=parseExcel(buffer,file.name);else if(/\.xml$/i.test(file.name))state=parsePtacek(decodeXml(buffer),file.name);else if(/\.pdf$/i.test(file.name)){try{state=await parseReceivedInvoicePdf(buffer,file.name)}catch(e){if(e.code==='NOT_INVOICE')state=await parsePdf(buffer,file.name);else throw e}}else throw new Error('Podporované sú iba XML, XLSX a PDF.');$('loadStatus').className='warning success';const label=state.sourceType==='invoicePdf'?'Prijatá faktúra PDF':state.sourceType==='xlsx'?'Excel':state.sourceType==='pdf'?'PDF ponuka':'XML';$('loadStatus').innerHTML=`Načítaný ${label} <b>${esc(state.invoiceNumber||state.dispatchNo)}</b> – ${state.items.length} položiek.`;$('priceSource').value='net';$('priceSource').querySelector('option[value="list"]').disabled=state.sourceType!=='xml';if(state.sourceType==='invoicePdf'&&!$('paymentType').value)$('paymentType').value='Príkazom';renderAll()}catch(e){$('loadStatus').className='warning danger';$('loadStatus').textContent=e.message||String(e)}}
-$('file').addEventListener('change',e=>e.target.files[0]&&loadFile(e.target.files[0]));['dragenter','dragover'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('drag')}));['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('drag')}));$('drop').addEventListener('drop',e=>e.dataTransfer.files[0]&&loadFile(e.dataTransfer.files[0]));
-$('items').addEventListener('input',e=>{const tr=e.target.closest('tr');if(!tr)return;const it=state.items[+tr.dataset.i];if(e.target.classList.contains('inc'))it.include=e.target.checked;else if(e.target.classList.contains('pcode'))it.pohodaCode=e.target.value;else if(e.target.classList.contains('qty'))it.quantity=parseN(e.target.value);else if(e.target.classList.contains('unitPrice')){const v=parseN(e.target.value);if($('priceSource').value==='list')it.listUnitPrice=v;else it.netUnitPrice=v}else if(e.target.classList.contains('vat'))it.vatKey=e.target.value;refresh()});
-$('codeSource').addEventListener('change',()=>{state.items.forEach(it=>it.pohodaCode=chooseCode(it,$('codeSource').value));renderRows();refresh()});$('priceSource').addEventListener('change',()=>{renderRows();refresh()});['accountIco','docDate','deliveryDate','storeId','paymentType','headerText','linkAddress','ignoreStoreFilter','invoiceNumber','symVar','dateTax','dateDue','contractCode'].forEach(id=>{const e=$(id);if(e)e.addEventListener('input',refresh)});
-$('rememberCodes').addEventListener('click',()=>{state.items.forEach(it=>{if(it.pohodaCode.trim()){if(it.vendorCode)mappings['vendor:'+it.vendorCode]=it.pohodaCode.trim();if(it.ptacekNo)mappings['ptacek:'+it.ptacekNo]=it.pohodaCode.trim();if(it.description)mappings['desc:'+normalizeDescription(it.description)]=it.pohodaCode.trim()}});saveMappings();renderRows();refresh();alert('Mapovanie kódov bolo uložené.')});
-$('exportMap').addEventListener('click',()=>downloadText('Ptacek_POHODA_mapovanie_kodov.json',JSON.stringify(mappings,null,2),'application/json;charset=utf-8'));$('importMap').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());mappings={...mappings,...obj};saveMappings();state.items.forEach(it=>{const m=mappedCode(it);if(m)it.pohodaCode=m});renderRows();refresh()}catch{alert('Neplatný JSON mapovania.')}e.target.value=''});$('clearMap').addEventListener('click',()=>{if(confirm('Vymazať mapovanie?')){mappings={};saveMappings();renderRows();refresh()}});
-$('download').addEventListener('click',()=>{const inv=state.sourceType==='invoicePdf';downloadText(`${state.invoiceNumber||state.dispatchNo||'Doklad'}_POHODA_${inv?'prijata_faktura':'vydana_objednavka'}.xml`,buildXml())});$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(buildXml());$('copy').textContent='Skopírované';setTimeout(()=>$('copy').textContent='Kopírovať XML',1200)}catch{alert('Kopírovanie nebolo povolené.')}});$('toggleXml').addEventListener('click',()=>{const open=$('xmlbox').classList.toggle('open');$('toggleXml').textContent=open?'Skryť XML':'Zobraziť XML'});state.headerText=defaultHeader(state);renderAll();
+function downloadText(name,text,type='application/xml;charset=utf-8'){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
+
+async function loadFile(file){
+  try{
+    window.stockXmlPreparedForDocument=false;
+    const buffer=await file.arrayBuffer();
+    if(/\.xml$/i.test(file.name)){
+      state=parsePtacek(decodeXml(buffer),file.name);
+      // striktne iba kód výrobcu
+      state.items.forEach(it=>it.pohodaCode=String(it.vendorCode||'').trim());
+    }else if(/\.pdf$/i.test(file.name)){
+      state=await parseReceivedInvoicePdf(buffer,file.name);
+      state.items.forEach(it=>it.pohodaCode=String(it.vendorCode||'').trim());
+    }else throw new Error('Podporované sú iba Ptáček XML výdajky a PDF faktúry.');
+
+    $('loadStatus').className='warning success';
+    $('loadStatus').innerHTML=`Načítaný <b>${state.sourceType==='invoicePdf'?'PDF faktúra':'XML výdajka'}</b> ${esc(state.invoiceNumber||state.dispatchNo)} – ${state.items.length} položiek.`;
+    renderAll();
+  }catch(e){
+    $('loadStatus').className='warning danger';
+    $('loadStatus').textContent=e.message||String(e);
+  }
+}
+
+$('file').addEventListener('change',e=>e.target.files[0]&&loadFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.add('drag')}));
+['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{e.preventDefault();$('drop').classList.remove('drag')}));
+$('drop').addEventListener('drop',e=>e.dataTransfer.files[0]&&loadFile(e.dataTransfer.files[0]));
+
+$('items').addEventListener('input',e=>{
+  const tr=e.target.closest('tr'); if(!tr)return;
+  const it=state.items[+tr.dataset.i];
+  if(e.target.classList.contains('vendorCode')){ it.vendorCode=e.target.value.trim(); it.pohodaCode=it.vendorCode; window.stockXmlPreparedForDocument=false; }
+  else if(e.target.classList.contains('qty')) it.quantity=parseN(e.target.value);
+  else if(e.target.classList.contains('unitPrice')) it.netUnitPrice=parseN(e.target.value);
+  else if(e.target.classList.contains('vat')) it.vatKey=e.target.value;
+  refresh();
+  if(typeof renderMissingStockCards==='function') renderMissingStockCards();
+});
+
+['accountIco','docDate','deliveryDate','storeId','paymentType','headerText','invoiceNumber','symVar','dateTax','dateDue','contractCode'].forEach(id=>{
+  const e=$(id); if(e)e.addEventListener('input',refresh);
+});
+
+$('download').addEventListener('click',()=>{
+  const inv=state.sourceType==='invoicePdf';
+  downloadText(`${state.invoiceNumber||state.dispatchNo||'Doklad'}_POHODA_${inv?'prijata_faktura':'vydana_objednavka'}.xml`,buildXml());
+});
+$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(buildXml());$('copy').textContent='Skopírované';setTimeout(()=>$('copy').textContent='Kopírovať XML',1200)}catch{alert('Kopírovanie nebolo povolené.')}});
+$('toggleXml').addEventListener('click',()=>{const open=$('xmlbox').classList.toggle('open');$('toggleXml').textContent=open?'Skryť XML':'Zobraziť XML'});
+
+state.headerText=defaultHeader(state); renderAll();
