@@ -5,30 +5,26 @@ let pohodaStockRows = [];
 let stockListLoaded = false;
 
 function normalizeStockCode(v){ return String(v??'').trim().toUpperCase(); }
-function simpleHash(text){
-  let h=2166136261;
-  for(const ch of String(text||'')){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); }
-  return (h>>>0).toString(36).toUpperCase().padStart(7,'0').slice(0,7);
-}
-function codeFromDescription(description){
-  const s=String(description||'').replace(/\s+/g,' ').trim();
-  // Uprednostni modelové označenie obsahujúce písmeno aj číslicu, napr. RCPE1, DN28, M0113.
-  const tokens=s.match(/[A-Za-z0-9][A-Za-z0-9._\/-]{2,24}/g)||[];
-  const model=tokens.find(t=>/[A-Za-z]/.test(t)&&/\d/.test(t)&&!/^(DN|PN|MM|CM|M2|M3)$/i.test(t));
-  if(model) return model.toUpperCase().replace(/[^A-Z0-9._\/-]/g,'').slice(0,25);
-  return `AUTO-${simpleHash(s)}`;
-}
-function stockCandidateCode(it){
-  return String(it.pohodaCode||it.vendorCode||it.ptacekNo||codeFromDescription(it.description)).trim();
-}
+function stockManufacturerCode(it){ return String(it?.vendorCode||'').trim(); }
+function stockCandidateCode(it){ return stockManufacturerCode(it); }
 function stockExists(it){
-  const candidates=[it.pohodaCode,it.vendorCode,it.ptacekNo].map(normalizeStockCode).filter(Boolean);
-  return candidates.some(c=>pohodaStockCodes.has(c));
+  const code=normalizeStockCode(stockManufacturerCode(it));
+  return !!code && pohodaStockCodes.has(code);
 }
 function stockVatKey(it){ return it.vatKey || vatKey(it.vatRate||23); }
 function stockSellingPrice(it){
   const markup=parseN($('stockMarkup')?.value||30)/100;
   return (Number(it.netUnitPrice)||0)*(1+markup);
+}
+
+function prepareMissingItemsAsStock(){
+  (state.items||[]).forEach(it=>{
+    if(it.include===false) return;
+    const manufacturer=stockManufacturerCode(it);
+    if(!manufacturer) return;
+    // Kód POHODA pre novú alebo existujúcu kartu = kód výrobcu z Obj.číslo.
+    if(!stockExists(it) || !String(it.pohodaCode||'').trim()) it.pohodaCode=manufacturer;
+  });
 }
 
 async function loadPohodaStockExport(file){
@@ -47,6 +43,7 @@ async function loadPohodaStockExport(file){
   if(stores.length===1 && $('newStockStorage') && !$('newStockStorage').value) $('newStockStorage').value=stores[0];
   $('stockLoadStatus').className='warning success';
   $('stockLoadStatus').innerHTML=`Načítaných <b>${rows.length}</b> skladových kariet z POHODY. Sklady: <b>${esc(stores.join(', ')||'nezistené')}</b>.`;
+  prepareMissingItemsAsStock();
   renderMissingStockCards();
 }
 
@@ -55,25 +52,34 @@ function renderMissingStockCards(){
   const btn=$('downloadStockXml');
   if(!box||!btn) return;
   if(!stockListLoaded){
-    box.innerHTML='<div class="warning">Najprv nahrajte aktuálny export <b>Zásoby P.xlsx</b> z POHODY.</div>';
+    box.innerHTML='<div class="warning">Načítavam zoznam zásob POHODA…</div>';
     btn.disabled=true; return;
   }
+
+  prepareMissingItemsAsStock();
   const source=(state.items||[]).filter(it=>it.include!==false);
   const missing=source.filter(it=>!stockExists(it));
+  const noManufacturer=missing.filter(it=>!stockManufacturerCode(it));
+  const creatable=missing.filter(it=>!!stockManufacturerCode(it));
   const existing=source.length-missing.length;
+
   if(!missing.length){
-    box.innerHTML=`<div class="warning success"><b>Všetky položky existujú.</b> ${existing} z ${source.length} položiek faktúry má zodpovedajúcu skladovú kartu.</div>`;
-    btn.disabled=true; return;
+    box.innerHTML=`<div class="warning success"><b>Všetky položky existujú v sklade.</b> ${existing} z ${source.length} položiek faktúry má kartu podľa kódu výrobcu.</div>`;
+    btn.disabled=true;
+    renderRows(); refresh();
+    return;
   }
-  box.innerHTML=`<div class="warning" style="margin-top:0"><b>${missing.length} chýbajúcich kariet</b> z ${source.length} položiek; ${existing} už existuje.</div>
-  <div class="table-wrap" style="max-height:430px;margin-top:12px"><table style="min-width:1100px"><thead><tr><th>Vytvoriť</th><th>Kód novej karty</th><th>Názov</th><th>MJ</th><th>Nákup bez DPH</th><th>Predaj bez DPH</th><th>DPH</th></tr></thead><tbody>${missing.map((it,idx)=>{
-    const code=stockCandidateCode(it); const sell=stockSellingPrice(it);
-    // Kód novej karty použijeme aj na následnom XML prijatej faktúry.
-    if(!it.pohodaCode) it.pohodaCode=code;
-    return `<tr class="new-stock-row" data-source-line="${esc(it.lineNo)}"><td><input class="newStockInclude" type="checkbox" checked></td><td><input class="newStockCode code" value="${esc(code)}"></td><td><input class="newStockName" value="${esc(it.description||'')}"></td><td><input class="newStockUnit" value="${esc(it.unit||'ks')}" style="width:70px"></td><td><input class="newStockPurchase num" type="number" step="any" value="${num(it.netUnitPrice)}"></td><td><input class="newStockSelling num" type="number" step="any" value="${num(sell)}"></td><td>${vatRate(stockVatKey(it))} %</td></tr>`;
+
+  let top=`<div class="warning" style="margin-top:0"><b>${missing.length} neskladových položiek</b> z ${source.length}. ${creatable.length} sa automaticky pripraví ako nová skladová karta podľa <b>kódu výrobcu / Obj.číslo</b>.</div>`;
+  if(noManufacturer.length){
+    top+=`<div class="warning danger"><b>${noManufacturer.length} položkám chýba kód výrobcu.</b> Tieto položky nemožno bezpečne založiť automaticky. Doplňte kód výrobcu v hlavnej tabuľke do stĺpca „Kód výrobcu / Obj.číslo“.</div>`;
+  }
+
+  box.innerHTML=top+`<div class="table-wrap" style="max-height:430px;margin-top:12px"><table style="min-width:1150px"><thead><tr><th>Vytvoriť</th><th>Kód výrobcu = Kód POHODA</th><th>Názov</th><th>MJ</th><th>Nákup bez DPH</th><th>Predaj bez DPH</th><th>DPH</th></tr></thead><tbody>${creatable.map(it=>{
+    const code=stockManufacturerCode(it); const sell=stockSellingPrice(it); it.pohodaCode=code;
+    return `<tr class="new-stock-row" data-source-line="${esc(it.lineNo)}"><td><input class="newStockInclude" type="checkbox" checked></td><td><input class="newStockCode code" value="${esc(code)}" title="Kód výrobcu z Obj.číslo; tento kód sa použije aj na prijatej faktúre"></td><td><input class="newStockName" value="${esc(it.description||'')}"></td><td><input class="newStockUnit" value="${esc(it.unit||'ks')}" style="width:70px"></td><td><input class="newStockPurchase num" type="number" step="any" value="${num(it.netUnitPrice)}"></td><td><input class="newStockSelling num" type="number" step="any" value="${num(sell)}"></td><td>${vatRate(stockVatKey(it))} %</td></tr>`;
   }).join('')}</tbody></table></div>`;
-  btn.disabled=false;
-  // Aktualizuj aj hlavnú tabuľku položiek, aby bolo vidieť nový Kód POHODA.
+  btn.disabled=!creatable.length;
   renderRows(); refresh();
 }
 
@@ -81,37 +87,43 @@ function syncGeneratedStockCodes(){
   [...document.querySelectorAll('.new-stock-row')].forEach(r=>{
     const src=(state.items||[]).find(x=>String(x.lineNo)===String(r.dataset.sourceLine));
     const code=r.querySelector('.newStockCode')?.value.trim();
-    if(src&&code) src.pohodaCode=code;
+    if(src&&code){
+      src.vendorCode=code; // ak ho používateľ opraví, považujeme ho za kód výrobcu
+      src.pohodaCode=code;
+    }
   });
 }
 
 function buildMissingStockXml(){
-  if(!stockListLoaded) throw new Error('Najprv nahrajte export zásob z POHODY.');
+  if(!stockListLoaded) throw new Error('Zoznam zásob ešte nie je načítaný.');
   const storage=String($('newStockStorage')?.value||'').trim();
   if(!storage) throw new Error('Vyplňte cieľový sklad pre nové karty.');
   syncGeneratedStockCodes();
   const rows=[...document.querySelectorAll('.new-stock-row')].filter(r=>r.querySelector('.newStockInclude')?.checked);
   if(!rows.length) throw new Error('Nie je označená žiadna nová skladová karta.');
+
   const items=rows.map((r,i)=>{
     const code=r.querySelector('.newStockCode').value.trim();
     const name=r.querySelector('.newStockName').value.trim().slice(0,90);
     const unit=r.querySelector('.newStockUnit').value.trim()||'ks';
     const purchase=parseN(r.querySelector('.newStockPurchase').value);
     const selling=parseN(r.querySelector('.newStockSelling').value);
-    if(!code) throw new Error(`Nová karta ${i+1}: chýba kód.`);
+    if(!code) throw new Error(`Nová karta ${i+1}: chýba kód výrobcu.`);
     if(!name) throw new Error(`Nová karta ${i+1}: chýba názov.`);
     const src=(state.items||[]).find(x=>String(x.lineNo)===String(r.dataset.sourceLine));
-    if(src) src.pohodaCode=code;
+    if(src){src.vendorCode=code;src.pohodaCode=code;}
     const rate=stockVatKey(src||{});
-    return `\t<dat:dataPackItem id="ZAS-${esc(safeId(code))}" version="2.0">\n\t\t<stk:stock version="2.0">\n\t\t\t<stk:stockHeader>\n\t\t\t\t<stk:stockType>card</stk:stockType>\n\t\t\t\t<stk:code>${esc(code)}</stk:code>\n\t\t\t\t<stk:isSales>true</stk:isSales>\n\t\t\t\t<stk:purchasingRateVAT>${rate}</stk:purchasingRateVAT>\n\t\t\t\t<stk:sellingRateVAT>${rate}</stk:sellingRateVAT>\n\t\t\t\t<stk:name>${esc(name)}</stk:name>\n\t\t\t\t<stk:unit>${esc(unit)}</stk:unit>\n\t\t\t\t<stk:storage><typ:ids>${esc(storage)}</typ:ids></stk:storage>\n\t\t\t\t<stk:purchasingPrice>${num(purchase)}</stk:purchasingPrice>\n\t\t\t\t<stk:sellingPrice>${num(selling)}</stk:sellingPrice>\n\t\t\t</stk:stockHeader>\n\t\t</stk:stock>\n\t</dat:dataPackItem>`;
+    return `\t<dat:dataPackItem id="ZAS-${esc(safeId(code))}" version="2.0">\n\t\t<stk:stock version="2.0">\n\t\t\t<stk:stockHeader>\n\t\t\t\t<stk:stockType>card</stk:stockType>\n\t\t\t\t<stk:code>${esc(code)}</stk:code>\n\t\t\t\t<stk:name>${esc(name)}</stk:name>\n\t\t\t\t<stk:unit>${esc(unit)}</stk:unit>\n\t\t\t\t<stk:storage><typ:ids>${esc(storage)}</typ:ids></stk:storage>\n\t\t\t\t<stk:isSales>true</stk:isSales>\n\t\t\t\t<stk:purchasingRateVAT>${rate}</stk:purchasingRateVAT>\n\t\t\t\t<stk:sellingRateVAT>${rate}</stk:sellingRateVAT>\n\t\t\t\t<stk:purchasingPrice>${num(purchase)}</stk:purchasingPrice>\n\t\t\t\t<stk:sellingPrice>${num(selling)}</stk:sellingPrice>\n\t\t\t</stk:stockHeader>\n\t\t</stk:stock>\n\t</dat:dataPackItem>`;
   }).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<dat:dataPack id="NEW-STOCK-${Date.now()}" ico="${esc(state.customerIco||'53690036')}" application="Spektra-Doklady-v3.3" version="2.0" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:stk="http://www.stormware.cz/schema/version_2/stock.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">\n${items}\n</dat:dataPack>\n`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<dat:dataPack id="NEW-STOCK-${Date.now()}" ico="${esc(state.customerIco||'53690036')}" application="Spektra-Doklady-v3.6" version="2.0" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:stk="http://www.stormware.cz/schema/version_2/stock.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">\n${items}\n</dat:dataPack>\n`;
 }
 
 function downloadMissingStockXml(){
   try{
     const xml=buildMissingStockXml();
     downloadText(`${state.invoiceNumber||state.dispatchNo||'doklad'}_NOVE_SKLADOVE_KARTY.xml`,xml);
+    // Po vytvorení XML zostanú rovnaké kódy aj na prijatej faktúre – tá sa teda importuje skladovo.
     renderRows(); refresh();
   }catch(e){ alert(e.message||String(e)); }
 }
