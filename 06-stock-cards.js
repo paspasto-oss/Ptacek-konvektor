@@ -49,7 +49,6 @@ function renderMissingStockCards(){
 
 function buildMissingStockXml(){
   if(!stockListLoaded)throw new Error('Zoznam zásob ešte nie je načítaný.');
-  const storage=String($('newStockStorage')?.value||'').trim(); if(!storage)throw new Error('Vyplňte sklad pre nové karty.');
   const rows=[...document.querySelectorAll('.new-stock-row')].filter(r=>r.querySelector('.newStockInclude')?.checked); if(!rows.length)throw new Error('Nie je označená žiadna nová skladová karta.');
   const items=rows.map((r,i)=>{
     const code=r.querySelector('.newStockCode').value.trim();
@@ -61,7 +60,7 @@ function buildMissingStockXml(){
     if(!name)throw new Error(`Nová karta ${i+1}: chýba názov.`);
     const src=(state.items||[]).find(x=>String(x.lineNo)===String(r.dataset.sourceLine));
     const rate=stockVatKey(src||{});
-    return `\t<dat:dataPackItem id="ZAS-${esc(safeId(code))}" version="2.0">\n\t\t<stk:stock version="2.0">\n\t\t\t<stk:stockHeader>\n\t\t\t\t<stk:stockType>card</stk:stockType>\n\t\t\t\t<stk:code>${esc(code)}</stk:code>\n\t\t\t\t<stk:isSales>true</stk:isSales>\n\t\t\t\t<stk:purchasingRateVAT>${rate}</stk:purchasingRateVAT>\n\t\t\t\t<stk:sellingRateVAT>${rate}</stk:sellingRateVAT>\n\t\t\t\t<stk:name>${esc(name)}</stk:name>\n\t\t\t\t<stk:unit>${esc(unit)}</stk:unit>\n\t\t\t\t<stk:storage><typ:ids>${esc(storage)}</typ:ids></stk:storage>\n\t\t\t\t<stk:purchasingPrice>${num(purchase)}</stk:purchasingPrice>\n\t\t\t\t<stk:sellingPrice>${num(selling)}</stk:sellingPrice>\n\t\t\t</stk:stockHeader>\n\t\t</stk:stock>\n\t</dat:dataPackItem>`;
+    return `\t<dat:dataPackItem id="ZAS-${esc(safeId(code))}" version="2.0">\n\t\t<stk:stock version="2.0">\n\t\t\t<stk:stockHeader>\n\t\t\t\t<stk:stockType>card</stk:stockType>\n\t\t\t\t<stk:code>${esc(code)}</stk:code>\n\t\t\t\t<stk:isSales>true</stk:isSales>\n\t\t\t\t<stk:purchasingRateVAT>${rate}</stk:purchasingRateVAT>\n\t\t\t\t<stk:sellingRateVAT>${rate}</stk:sellingRateVAT>\n\t\t\t\t<stk:name>${esc(name)}</stk:name>\n\t\t\t\t<stk:unit>${esc(unit)}</stk:unit>\n\t\t\t\t<stk:purchasingPrice>${num(purchase)}</stk:purchasingPrice>\n\t\t\t\t<stk:sellingPrice>${num(selling)}</stk:sellingPrice>\n\t\t\t</stk:stockHeader>\n\t\t</stk:stock>\n\t</dat:dataPackItem>`;
   }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<dat:dataPack id="NEW-STOCK-${Date.now()}" ico="${esc(state.customerIco||'53690036')}" application="Spektra-Ptacek-v4.0" version="2.0" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd" xmlns:stk="http://www.stormware.cz/schema/version_2/stock.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">\n${items}\n</dat:dataPack>\n`;
 }
