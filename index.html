@@ -2,9 +2,9 @@
 <html lang="sk">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Doklady → POHODA | Spektra</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="shortcut icon" href="favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#2563EB"><link rel="stylesheet" href="style.css?v=3.4">
+<title>Doklady → POHODA | Spektra</title><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="shortcut icon" href="favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#2563EB"><link rel="stylesheet" href="style.css?v=3.5">
 </head><body>
-<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Doklady → POHODA <small style="font-size:13px;color:#bbb">v3.4</small></h1><p>Objednávky, prijaté faktúry a skladové karty z XML, XLSX a PDF</p></div></div></header>
+<header><div class="head"><div class="logo" aria-hidden="true"></div><div><h1>Doklady → POHODA <small style="font-size:13px;color:#bbb">v3.5</small></h1><p>Objednávky, prijaté faktúry a skladové karty z XML, XLSX a PDF</p></div></div></header>
 <main>
 <section class="card"><h2>1. Načítanie zdrojového dokladu</h2><div class="content"><div class="drop" id="drop"><strong>Presuňte sem XML, XLSX alebo PDF</strong><span>PDF faktúru Ptáček aplikácia automaticky rozpozná a pripraví ako prijatú faktúru POHODA.</span><br><input id="file" type="file" accept=".xml,.xlsx,.pdf,text/xml,application/xml,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div class="meta" id="meta"></div><div id="loadStatus" class="warning">Nahrajte XML výdajku, Excel/PDF ponuku alebo PDF faktúru.</div></div></section>
 
@@ -29,5 +29,5 @@
 
 <section class="card"><h2>Postup v POHODE</h2><div class="content"><div class="steps"><div class="step"><b>1. Doklad</b>Načítajte faktúru a skontrolujte číslo, VS, dátumy a položky.</div><div class="step"><b>2. Zásoby</b>Konvertor použije vstavaný zoznam zásob; mesačný export je iba aktualizácia.</div><div class="step"><b>3. Import kariet</b>Ak niečo chýba, najprv importujte XML nových skladových kariet.</div><div class="step"><b>4. Import faktúry</b>Potom importujte XML prijatej faktúry.</div></div></div></section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script><script src="stock-data.js?v=20260911"></script><script src="01-core.js?v=3.4"></script><script src="04-pdf-code-fix.js?v=3.4"></script><script src="05-received-invoice.js?v=3.4"></script><script src="02-render.js?v=3.4"></script><script src="03-events.js?v=3.4"></script><script src="06-stock-cards.js?v=3.4"></script><script src="07-stock-snapshot.js?v=3.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script><script src="stock-data.js?v=20260911b"></script><script src="01-core.js?v=3.5"></script><script src="04-pdf-code-fix.js?v=3.5"></script><script src="05-received-invoice.js?v=3.5"></script><script src="02-render.js?v=3.5"></script><script src="03-events.js?v=3.5"></script><script src="06-stock-cards.js?v=3.5"></script><script src="07-stock-snapshot.js?v=3.5"></script>
 </body></html>
